@@ -32,8 +32,8 @@ func (l *Logger) Error(format string, v ...interface{}) {
 	if l.LogToConsole {
 		l.std.Output(3, fmt.Sprintf("[E] "+format, v...))
 	}
-	if l.info != nil {
-		l.info.Output(3, fmt.Sprintf("[E] "+format, v...))
+	if l.err != nil {
+		l.err.Output(3, fmt.Sprintf("[E] "+format, v...))
 	}
 }
 
@@ -52,7 +52,7 @@ func NewProducerLogger(path, alias string) *Logger {
 		Compress:  false,
 	}, "[I] ", flag)
 
-	l.info = log.New(&lumberjack.Logger{
+	l.err = log.New(&lumberjack.Logger{
 		Filename:  fmt.Sprintf("%s/%s.producer.error.log", path, alias),
 		MaxSize:   50,
 		MaxAge:    3,
@@ -77,7 +77,7 @@ func NewConsumerLogger(path, alias string) *Logger {
 		Compress:  false,
 	}, "[I] ", flag)
 
-	l.info = log.New(&lumberjack.Logger{
+	l.err = log.New(&lumberjack.Logger{
 		Filename:  fmt.Sprintf("%s/%s.consumer.error.log", path, alias),
 		MaxSize:   50,
 		MaxAge:    3,

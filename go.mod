@@ -1,4 +1,4 @@
-module rbtool
+module github.com/sunp13/rbtool
 
 go 1.13
 

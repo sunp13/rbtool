@@ -3,7 +3,6 @@ package rbtool
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/streadway/amqp"
@@ -16,8 +15,8 @@ type Producer struct {
 	conn             *amqp.Connection
 	channelConfirmed *amqp.Channel
 	channel          *amqp.Channel
+	notifyConfirm    chan amqp.Confirmation
 	log              *Logger
-	lock             sync.RWMutex
 }
 
 // NewProducer ...
@@ -30,12 +29,10 @@ func NewProducer(url string) *Producer {
 
 // Dial ... 连接
 func (p *Producer) Dial() error {
-	p.lock.Lock()
-	defer p.lock.Unlock()
-
 	p.conn = nil
 	p.channelConfirmed = nil
 	p.channel = nil
+	p.notifyConfirm = make(chan amqp.Confirmation, 0)
 
 	p.log.Info("rbtool begin dial %s ...", p.URL)
 	// 连接3秒超时
@@ -82,22 +79,14 @@ func (p *Producer) Dial() error {
 		if err = p.channelConfirmed.Confirm(false); err != nil {
 			return err
 		}
+		// 注册confirmed 的回调通道
+		p.channelConfirmed.NotifyPublish(p.notifyConfirm)
 		return nil
 	}
 }
 
 // PublishConfirmed ... 发布同步消息-> 等待confirm ack
 func (p *Producer) PublishConfirmed(exchange, key string, msg amqp.Publishing) error {
-	// 如果channel 不存在, 尝试重连
-	// if p.syncChannel == nil {
-	// 	for {
-	// 		if err := p.Dial(); err == nil {
-	// 			break
-	// 		}
-	// 	}
-	// }
-	//
-
 	err := p.channelConfirmed.Publish(
 		exchange,
 		key,
@@ -106,16 +95,17 @@ func (p *Producer) PublishConfirmed(exchange, key string, msg amqp.Publishing) e
 		msg,
 	)
 	if err != nil {
-		// 判断是否是网络问题要重新连接
+		p.log.Error("Publish confirm msg failed ex=%s,key=%s,msg=%s,err=%s", exchange, key, string(msg.Body), err.Error())
 		return err
 	}
-	confirm := p.channelConfirmed.NotifyPublish(make(chan amqp.Confirmation, 0))
-	if confirmed := <-confirm; confirmed.Ack {
+
+	if confirmed := <-p.notifyConfirm; confirmed.Ack {
 		if p.log.LogSucc {
 			p.log.Info("Publish confirm msg succ! ex=%s,key=%s,msg=%s", exchange, key, string(msg.Body))
 		}
 		return nil
 	}
+
 	p.log.Error("Publish confirm msg failed no confirmed ex=%s,key=%s,msg=%s", exchange, key, string(msg.Body))
 	return fmt.Errorf("Publish confirm msg failed no confirmed ex=%s,key=%s,msg=%s", exchange, key, string(msg.Body))
 }
@@ -130,7 +120,6 @@ func (p *Producer) Publish(exchange, key string, msg amqp.Publishing) error {
 		msg,
 	)
 	if err != nil {
-		// 判断是否要重新连接
 		p.log.Error("Publish noconfirm msg failed ex=%s,key=%s,msg=%s,err=%s", exchange, key, string(msg.Body), err.Error())
 		return err
 	}
@@ -143,4 +132,19 @@ func (p *Producer) Publish(exchange, key string, msg amqp.Publishing) error {
 // SetLogger 设置logger
 func (p *Producer) SetLogger(logger *Logger) {
 	p.log = logger
+}
+
+// Close 关闭
+func (p *Producer) Close() {
+	if p.channel != nil {
+		p.channel.Close()
+	}
+
+	if p.channelConfirmed != nil {
+		p.channelConfirmed.Close()
+	}
+
+	if p.conn != nil {
+		p.conn.Close()
+	}
 }
