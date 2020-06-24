@@ -59,6 +59,7 @@ func NewProducerLogger(path, alias string) *Logger {
 		LocalTime: true,
 		Compress:  false,
 	}, "[E] ", flag)
+
 	return l
 }
 
@@ -84,6 +85,7 @@ func NewConsumerLogger(path, alias string) *Logger {
 		LocalTime: true,
 		Compress:  false,
 	}, "[E] ", flag)
+
 	return l
 }
 

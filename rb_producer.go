@@ -17,6 +17,7 @@ type Producer struct {
 	channel          *amqp.Channel
 	notifyConfirm    chan amqp.Confirmation
 	log              *Logger
+	ready            bool
 }
 
 // NewProducer ...
@@ -29,10 +30,11 @@ func NewProducer(url string) *Producer {
 
 // Dial ... 连接
 func (p *Producer) Dial() error {
+	p.ready = false
 	p.conn = nil
 	p.channelConfirmed = nil
 	p.channel = nil
-	p.notifyConfirm = make(chan amqp.Confirmation, 0)
+	p.notifyConfirm = make(chan amqp.Confirmation, 1)
 
 	p.log.Info("rbtool begin dial %s ...", p.URL)
 	// 连接3秒超时
@@ -81,12 +83,18 @@ func (p *Producer) Dial() error {
 		}
 		// 注册confirmed 的回调通道
 		p.channelConfirmed.NotifyPublish(p.notifyConfirm)
+		p.ready = true
 		return nil
 	}
 }
 
 // PublishConfirmed ... 发布同步消息-> 等待confirm ack
 func (p *Producer) PublishConfirmed(exchange, key string, msg amqp.Publishing) error {
+
+	if !p.ready {
+		p.log.Error("Publish confirm msg failed ex=%s,key=%s,msg=%s,err=%s", exchange, key, string(msg.Body), "producter is not ready(reconnecting...)")
+		return fmt.Errorf("Publish confirm msg failed ex=%s,key=%s,msg=%s,err=%s", exchange, key, string(msg.Body), "producter is not ready(reconnecting...)")
+	}
 	err := p.channelConfirmed.Publish(
 		exchange,
 		key,
@@ -112,6 +120,10 @@ func (p *Producer) PublishConfirmed(exchange, key string, msg amqp.Publishing) e
 
 // Publish 不需要confirm的publish
 func (p *Producer) Publish(exchange, key string, msg amqp.Publishing) error {
+	if !p.ready {
+		p.log.Error("Publish noconfirm msg failed ex=%s,key=%s,msg=%s,err=%s", exchange, key, string(msg.Body), "producter is not ready(reconnecting...)")
+		return fmt.Errorf("Publish noconfirm msg failed ex=%s,key=%s,msg=%s,err=%s", exchange, key, string(msg.Body), "producter is not ready(reconnecting...)")
+	}
 	err := p.channel.Publish(
 		exchange,
 		key,
