@@ -3,7 +3,6 @@ package rbtool
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -100,22 +99,21 @@ func (c *MyConsumer) consumerWork(w *sync.WaitGroup, fn func(msg []byte) error, 
 	}
 
 	err = channel.Qos(prefetchCount, 0, false)
+
 	if err != nil {
 		c.log.Error("cosnumer id=%d, error %s", i, err.Error())
 		return
 	}
 	defer channel.Close()
 
-	hostname, _ := os.Hostname()
-
 	deliveries, err := channel.Consume(
-		c.queueName,                       // name
-		fmt.Sprintf("%s_%d", hostname, i), // consumerTag,
-		c.NoAck,                           // noAck   if false can use reject 只有需要ack的时候才能开启reject
-		c.Exclusive,                       // exclusive
-		false,                             // noLocal
-		false,                             // noWait
-		c.Argument,                        // arguments
+		c.queueName, // name
+		"",          // consumerTag,
+		c.NoAck,     // noAck   if false can use reject 只有需要ack的时候才能开启reject
+		c.Exclusive, // exclusive
+		false,       // noLocal
+		false,       // noWait
+		c.Argument,  // arguments
 	)
 
 	if err != nil {
