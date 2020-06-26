@@ -30,6 +30,7 @@ func NewProducer(url string) *Producer {
 
 // Dial ... 连接
 func (p *Producer) Dial() error {
+
 	p.ready = false
 	p.conn = nil
 	p.channelConfirmed = nil

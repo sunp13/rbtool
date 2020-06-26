@@ -94,5 +94,7 @@ func NewDefaultLogger() *Logger {
 	flag := log.Ldate | log.Lmicroseconds | log.Lshortfile
 	l := new(Logger)
 	l.std = log.New(os.Stdout, "", flag)
+	l.LogToConsole = true
+	l.LogSucc = true
 	return l
 }
