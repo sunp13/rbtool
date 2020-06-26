@@ -165,3 +165,8 @@ func (c *MyConsumer) Close() {
 		c.conn.Close()
 	}
 }
+
+// SetLogger ...
+func (c *MyConsumer) SetLogger(logger *Logger) {
+	c.log = logger
+}
