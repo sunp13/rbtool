@@ -3,6 +3,7 @@ package rbtool
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/streadway/amqp"
@@ -18,6 +19,7 @@ type Producer struct {
 	notifyConfirm    chan amqp.Confirmation
 	log              *Logger
 	ready            bool
+	reconnect        chan struct{}
 }
 
 // NewProducer ...
@@ -35,7 +37,6 @@ func (p *Producer) Dial() error {
 	p.conn = nil
 	p.channelConfirmed = nil
 	p.channel = nil
-	p.notifyConfirm = make(chan amqp.Confirmation, 1)
 
 	p.log.Info("rbtool begin dial %s ...", p.URL)
 	// 连接3秒超时
@@ -83,8 +84,23 @@ func (p *Producer) Dial() error {
 			return err
 		}
 		// 注册confirmed 的回调通道
+		p.notifyConfirm = make(chan amqp.Confirmation, 1)
 		p.channelConfirmed.NotifyPublish(p.notifyConfirm)
+
 		p.ready = true
+		p.reconnect = make(chan struct{})
+		go func() {
+			<-p.reconnect
+			p.log.Error("rbtool begin reconnect...")
+			for {
+				err := p.Dial()
+				if err == nil {
+					break
+				}
+				time.Sleep(1 * time.Second)
+			}
+		}()
+
 		return nil
 	}
 }
@@ -105,6 +121,9 @@ func (p *Producer) PublishConfirmed(exchange, key string, msg amqp.Publishing) e
 	)
 	if err != nil {
 		p.log.Error("Publish confirm msg failed ex=%s,key=%s,msg=%s,err=%s", exchange, key, string(msg.Body), err.Error())
+		if matched, _ := regexp.MatchString(`channel\/connection is not open`, err.Error()); matched {
+			close(p.reconnect)
+		}
 		return err
 	}
 
@@ -134,6 +153,9 @@ func (p *Producer) Publish(exchange, key string, msg amqp.Publishing) error {
 	)
 	if err != nil {
 		p.log.Error("Publish noconfirm msg failed ex=%s,key=%s,msg=%s,err=%s", exchange, key, string(msg.Body), err.Error())
+		if matched, _ := regexp.MatchString(`channel\/connection is not open`, err.Error()); matched {
+			close(p.reconnect)
+		}
 		return err
 	}
 	if p.log.LogSucc {

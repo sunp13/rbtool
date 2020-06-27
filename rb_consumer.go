@@ -3,6 +3,7 @@ package rbtool
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sync"
 	"time"
 
@@ -23,6 +24,7 @@ type MyConsumer struct {
 	Exclusive bool
 	Requeue   bool
 	Argument  amqp.Table
+	reconnect chan struct{}
 }
 
 // NewConsumer ...
@@ -37,8 +39,9 @@ func NewConsumer(URL, qname string) *MyConsumer {
 
 // Dial ...
 func (c *MyConsumer) Dial() error {
+	c.ready = false
 	c.conn = nil
-	c.log.Info("rbtool begin dial %s ...", c.url)
+	c.log.Info("rbtool begin dial ...")
 	// 连接3秒超时
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -61,15 +64,29 @@ func (c *MyConsumer) Dial() error {
 
 	select {
 	case <-ctx.Done():
-		c.log.Info("rbtool dial %s error timeout in 3sec", c.url)
-		return fmt.Errorf("dial %s error timeout in 3sec", c.url)
+		c.log.Info("rbtool dial error connected party did not properly respond after a period of time in 3sec")
+		return fmt.Errorf("dial error connected party did not properly respond after a period of time in 3sec")
 	case err := <-eh:
-		c.log.Error("rbtool dial %s error %s ", c.url, err.Error())
+		c.log.Error("rbtool dial error %s ", err.Error())
 		return err
 	case conn := <-ch:
-		c.log.Info("rbtool dial %s succ", c.url)
+		c.log.Info("rbtool dial succ")
 		c.conn = conn
 		c.ready = true
+		c.reconnect = make(chan struct{})
+
+		go func() {
+			<-c.reconnect
+			c.log.Error("rbtool begin reconnect...")
+			for {
+				err := c.Dial()
+				if err == nil {
+					break
+				}
+				time.Sleep(1 * time.Second)
+			}
+		}()
+
 		return nil
 	}
 }
@@ -94,6 +111,9 @@ func (c *MyConsumer) consumerWork(w *sync.WaitGroup, fn func(msg []byte) error, 
 
 	channel, err := c.conn.Channel()
 	if err != nil {
+		if matched, _ := regexp.MatchString(`connected party did not properly respond after a period of time`, err.Error()); matched {
+			close(c.reconnect)
+		}
 		c.log.Error("cosnumer id=%d, error %s", i, err.Error())
 		return
 	}
