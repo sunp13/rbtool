@@ -103,6 +103,12 @@ func (c *MyConsumer) Consume(fn func(msg []byte) error, consumerCount int, prefe
 
 // consumerWork 消费
 func (c *MyConsumer) consumerWork(w *sync.WaitGroup, fn func(msg []byte) error, prefetchCount, i int) {
+	defer func() {
+		if err := recover(); err != nil {
+			// fmt.Printf("%s\n", err)
+		}
+	}()
+
 	defer w.Done()
 	if !c.ready {
 		c.log.Error("cosnumer id=%d, error %s", i, "conn is not ready")
@@ -112,6 +118,9 @@ func (c *MyConsumer) consumerWork(w *sync.WaitGroup, fn func(msg []byte) error, 
 	channel, err := c.conn.Channel()
 	if err != nil {
 		if matched, _ := regexp.MatchString(`connected party did not properly respond after a period of time`, err.Error()); matched {
+			close(c.reconnect)
+		}
+		if matched, _ := regexp.MatchString(`channel/connection is not open`, err.Error()); matched {
 			close(c.reconnect)
 		}
 		c.log.Error("cosnumer id=%d, error %s", i, err.Error())
@@ -174,7 +183,7 @@ func (c *MyConsumer) consumerWork(w *sync.WaitGroup, fn func(msg []byte) error, 
 			}
 		}
 	}
-	c.log.Error("consumer id=%d, deliver process finish!")
+	c.log.Error("consumer id=%d, deliver process finish!", i)
 }
 
 // Close ...

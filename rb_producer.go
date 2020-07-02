@@ -124,6 +124,9 @@ func (p *Producer) PublishConfirmed(exchange, key string, msg amqp.Publishing) e
 		if matched, _ := regexp.MatchString(`channel\/connection is not open`, err.Error()); matched {
 			close(p.reconnect)
 		}
+		if matched, _ := regexp.MatchString(`connected party did not properly respond after a period of time`, err.Error()); matched {
+			close(p.reconnect)
+		}
 		return err
 	}
 
@@ -154,6 +157,9 @@ func (p *Producer) Publish(exchange, key string, msg amqp.Publishing) error {
 	if err != nil {
 		p.log.Error("Publish noconfirm msg failed ex=%s,key=%s,msg=%s,err=%s", exchange, key, string(msg.Body), err.Error())
 		if matched, _ := regexp.MatchString(`channel\/connection is not open`, err.Error()); matched {
+			close(p.reconnect)
+		}
+		if matched, _ := regexp.MatchString(`connected party did not properly respond after a period of time`, err.Error()); matched {
 			close(p.reconnect)
 		}
 		return err
